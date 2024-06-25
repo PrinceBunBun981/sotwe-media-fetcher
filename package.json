@@ -1,0 +1,17 @@
+{
+    "name": "sotwefetcher",
+    "version": "1.0.0",
+    "author": {
+        "name": "Nick",
+        "url": "https://nick.cool"
+    },
+    "type": "module",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "fs": "^0.0.1-security",
+        "node-fetch": "^3.3.2",
+        "path": "^0.12.7"
+    }
+}
