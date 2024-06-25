@@ -16,13 +16,15 @@ async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
         const date = new Date(createdAtTimestamp);
         const dateString = `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear()}`;
         const finalFilename = `${dateString}_${filename}`;
-        
         const userDirectory = path.join(__dirname, 'media', userFolder);
-        if (!fs.existsSync(userDirectory)) {
-            fs.mkdirSync(userDirectory, { recursive: true });
+
+        if (!fs.existsSync(userDirectory)) fs.mkdirSync(userDirectory, { recursive: true });
+        if (!fs.existsSync(path.join(userDirectory, finalFilename))) {
+            fs.writeFileSync(path.join(userDirectory, finalFilename), buffer);
+            console.log(`Downloaded media for ${userFolder}: ${finalFilename}`);
+        } else {
+            console.log(`Skipped download for ${userFolder}: ${finalFilename}`);
         }
-        fs.writeFileSync(path.join(userDirectory, finalFilename), buffer);
-        console.log(`Downloaded media for ${userFolder}: ${finalFilename}`);
     } catch (error) {
         console.error(`Error downloading media ${filename} for ${userFolder}:`, error);
     }
@@ -103,14 +105,14 @@ async function fetchPaginatedData() {
                 console.log(`Next cursor found.`, nextCursor);
             } else {
                 nextPageUrl = null;
-                console.log(`Next cursor wasn't found.`, nextCursor);
+                console.log("Next cursor wasn't found, exisitng.");
+                process.exit(0);
             }
 
             // Introduce a random delay between requests
             const delay = getRandomDelay(3000, 7000); // 3 to 7 seconds
             console.log(`Waiting for ${delay} milliseconds before next request...`);
             await sleep(delay);
-
         } catch (error) {
             console.error('Error fetching data:', error);
             nextPageUrl = null;
