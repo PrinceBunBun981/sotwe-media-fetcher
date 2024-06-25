@@ -1,4 +1,4 @@
-# Sotwe Media Fetching
+# Sotwe Media Fetcher
 This script is designed to fetch media data from Sotwe's API endpoint. It downloads images and videos associated with a user's Twitter (X) account.
 
 ## Prerequisites
