@@ -14,7 +14,7 @@ async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
         const buffer = Buffer.from(arrayBuffer);
 
         const date = new Date(createdAtTimestamp);
-        const dateString = `${date.getMonth() + 1}-${date.getDate()}-${date.getFullYear()}`;
+        const dateString = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
         const finalFilename = `${dateString}_${filename}`;
         const userDirectory = path.join(__dirname, 'media', userFolder);
 
