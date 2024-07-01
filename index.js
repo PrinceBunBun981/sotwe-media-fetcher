@@ -21,7 +21,7 @@ async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
         const userDirectory = path.join(__media, userFolder);
 
         if (!fs.existsSync(userDirectory)) fs.mkdirSync(userDirectory, { recursive: true });
-        if (!fs.existsSync(path.join(userDirectory, finalFilename))) {
+        if (!fs.readdirSync(userDirectory).some(file => file.includes(filename))) {
             fs.writeFileSync(path.join(userDirectory, finalFilename), buffer);
             console.log(`Downloaded media for ${userFolder}: ${finalFilename}`);
         } else {
@@ -68,7 +68,6 @@ async function fetchPaginatedData() {
         "priority": "u=1, i"
     };
 
-    console.log(fs.existsSync(path.join(__conversations, user.toLowerCase())))
     if (fs.existsSync(path.join(__conversations, user.toLowerCase()))) {
         fs.renameSync(path.join(__conversations, user.toLowerCase()), path.join(__media, user.toLowerCase()));
         console.log(`Moved ${user} directory from _conversations to main media folder.`);
@@ -94,8 +93,12 @@ async function fetchPaginatedData() {
             const data = await response.json();
             if (data.data && Array.isArray(data.data)) {
                 for (let item of data.data) {
-                    const userFolder = item.retweetedStatus ? path.join('_conversations', item.retweetedStatus.user.screenName.toLowerCase()) : user.toLowerCase(); // Folder name based on user
-                    await processMediaEntities(item.mediaEntities, item.createdAt, userFolder);
+                    if (item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() != user.toLowerCase()) {
+                        await processMediaEntities(item.mediaEntities, item.createdAt, path.join('_conversations', item.retweetedStatus.user.screenName.toLowerCase()));
+                    } else {
+                        await processMediaEntities(item.mediaEntities, item.createdAt, user.toLowerCase());
+                    }
+
                     if (item.conversation && Array.isArray(item.conversation)) {
                         for (let convoItem of item.conversation) {
                             if (convoItem.user && convoItem.user.screenName) {
