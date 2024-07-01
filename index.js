@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const __media = path.join(__dirname, 'media');
-const __conversations = path.join(__media, "_conversations");
+const __extra = path.join(__media, "_extra");
 
 // Function to download media
 async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
@@ -68,8 +68,8 @@ async function fetchPaginatedData() {
         "priority": "u=1, i"
     };
 
-    if (fs.existsSync(path.join(__conversations, user.toLowerCase()))) {
-        fs.renameSync(path.join(__conversations, user.toLowerCase()), path.join(__media, user.toLowerCase()));
+    if (fs.existsSync(path.join(__extra, user.toLowerCase()))) {
+        fs.renameSync(path.join(__extra, user.toLowerCase()), path.join(__media, user.toLowerCase()));
         console.log(`Moved ${user} directory from _conversations to main media folder.`);
     }
 
