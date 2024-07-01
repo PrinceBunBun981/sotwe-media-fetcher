@@ -94,7 +94,7 @@ async function fetchPaginatedData() {
             if (data.data && Array.isArray(data.data)) {
                 for (let item of data.data) {
                     if (item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() != user.toLowerCase()) {
-                        await processMediaEntities(item.mediaEntities, item.createdAt, path.join('_conversations', item.retweetedStatus.user.screenName.toLowerCase()));
+                        await processMediaEntities(item.mediaEntities, item.createdAt, path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase()));
                     } else {
                         await processMediaEntities(item.mediaEntities, item.createdAt, user.toLowerCase());
                     }
@@ -102,7 +102,7 @@ async function fetchPaginatedData() {
                     if (item.conversation && Array.isArray(item.conversation)) {
                         for (let convoItem of item.conversation) {
                             if (convoItem.user && convoItem.user.screenName) {
-                                const convoUserFolder = convoItem.user.screenName.toLowerCase() == user.toLowerCase() ? user.toLowerCase() : path.join('_conversations', convoItem.user.screenName.toLowerCase());
+                                const convoUserFolder = convoItem.user.screenName.toLowerCase() == user.toLowerCase() ? user.toLowerCase() : path.join('_extra', convoItem.user.screenName.toLowerCase());
                                 await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder);
                             }
                         }
