@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const __media = path.join(__dirname, 'media');
+const __conversations = path.join(__media, "_conversations");
 
 // Function to download media
 async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
@@ -16,7 +18,7 @@ async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
         const date = new Date(createdAtTimestamp);
         const dateString = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
         const finalFilename = `${dateString}_${filename}`;
-        const userDirectory = path.join(__dirname, 'media', userFolder);
+        const userDirectory = path.join(__media, userFolder);
 
         if (!fs.existsSync(userDirectory)) fs.mkdirSync(userDirectory, { recursive: true });
         if (!fs.existsSync(path.join(userDirectory, finalFilename))) {
@@ -66,6 +68,12 @@ async function fetchPaginatedData() {
         "priority": "u=1, i"
     };
 
+    console.log(fs.existsSync(path.join(__conversations, user.toLowerCase())))
+    if (fs.existsSync(path.join(__conversations, user.toLowerCase()))) {
+        fs.renameSync(path.join(__conversations, user.toLowerCase()), path.join(__media, user.toLowerCase()));
+        console.log(`Moved ${user} directory from _conversations to main media folder.`);
+    }
+
     while (nextPageUrl) {
         console.log(nextPageUrl);
         try {
@@ -86,12 +94,12 @@ async function fetchPaginatedData() {
             const data = await response.json();
             if (data.data && Array.isArray(data.data)) {
                 for (let item of data.data) {
-                    const userFolder = user.toLowerCase(); // Folder name based on user
+                    const userFolder = item.retweetedStatus ? path.join('_conversations', item.retweetedStatus.user.screenName.toLowerCase()) : user.toLowerCase(); // Folder name based on user
                     await processMediaEntities(item.mediaEntities, item.createdAt, userFolder);
                     if (item.conversation && Array.isArray(item.conversation)) {
                         for (let convoItem of item.conversation) {
                             if (convoItem.user && convoItem.user.screenName) {
-                                const convoUserFolder = convoItem.user.screenName.toLowerCase();
+                                const convoUserFolder = convoItem.user.screenName.toLowerCase() == user.toLowerCase() ? user.toLowerCase() : path.join('_conversations', convoItem.user.screenName.toLowerCase());
                                 await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder);
                             }
                         }
