@@ -11,15 +11,17 @@ Before running the script make sure you have Node.js installed. You can download
 ## Usage
 To run the script, use the following format:
 ```
-npm run start -- --user:<username> [--cursor:<cursor>]
+npm run start -- --user:<username> [--cursor:<cursor>] [--noextra]
 ```
 
 ### Arguments
 - `--user`: **Required**. Specifies the username for which data should be fetched for.
 - `--cursor`: Optional. Provides a starting cursor for fetching data from a specific point.
+- `--noextra`: Optional. Prevents downloading media from reposts and conversations.
 
 ## Notes
 - The script will download images and videos associated with the user's account.
 - There is a random delay between fetches to ensure rate limits don't get hit.
 - Downloaded media files are saved in the `./media/<user>` directory relative to the script's location.
+- Media files from reposts and conversations will be saved in the `./media/_extra/<user>` directory.
 - There may be directories made in the media folder for other users based on media found in replies.

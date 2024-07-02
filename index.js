@@ -8,56 +8,127 @@ const __dirname = path.dirname(__filename);
 const __media = path.join(__dirname, 'media');
 const __extra = path.join(__media, "_extra");
 
+let user = null;
+let startingCursor = null;
+let noExtra = false;
+
+// Utility functions
+const createDirectoryIfNotExists = (directory) => {
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory, { recursive: true });
+    }
+};
+
+const fileExistsInDirectory = (directory, filename) => {
+    return fs.readdirSync(directory).some(file => file.includes(filename));
+};
+
+const saveBufferToFile = (filePath, buffer) => {
+    fs.writeFileSync(filePath, buffer);
+};
+
+const getFormattedDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+};
+
+const sleep = (ms) => {
+    return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+const getRandomDelay = (min, max) => {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+};
+
 // Function to download media
-async function downloadMedia(url, filename, createdAtTimestamp, userFolder) {
+const downloadMedia = async (url, filename, createdAtTimestamp, userFolder) => {
     try {
         const response = await fetch(url);
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-
-        const date = new Date(createdAtTimestamp);
-        const dateString = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+        if (!response.ok) {
+            throw new Error(`Failed to fetch media: ${response.statusText}`);
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const dateString = getFormattedDate(createdAtTimestamp);
         const finalFilename = `${dateString}_${filename}`;
         const userDirectory = path.join(__media, userFolder);
 
-        if (!fs.existsSync(userDirectory)) fs.mkdirSync(userDirectory, { recursive: true });
-        if (!fs.readdirSync(userDirectory).some(file => file.includes(filename))) {
-            fs.writeFileSync(path.join(userDirectory, finalFilename), buffer);
+		if (noExtra && !userFolder.toLowerCase().includes(user.toLowerCase())) {
+			return console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
+		}
+
+        createDirectoryIfNotExists(userDirectory);
+        if (!fileExistsInDirectory(userDirectory, filename)) {
+            saveBufferToFile(path.join(userDirectory, finalFilename), buffer);
             console.log(`Downloaded media for ${userFolder}: ${finalFilename}`);
         } else {
-            console.log(`Skipped download for ${userFolder}: ${finalFilename}`);
+            console.log(`Skipped duplicate download for ${userFolder}: ${finalFilename}`);
         }
     } catch (error) {
         console.error(`Error downloading media ${filename} for ${userFolder}:`, error);
     }
-}
+};
 
-// Function to introduce delay
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+// Function to process individual media entities
+const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolder) => {
+    if (!Array.isArray(mediaEntities)) return;
 
-// Function to get random delay
-function getRandomDelay(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+    for (const media of mediaEntities) {
+        const { videoInfo, mediaURL, imageSize } = media;
+        let url;
+
+        if (videoInfo && Array.isArray(videoInfo.variants)) {
+            const highestBitrateVariant = videoInfo.variants.reduce((prev, current) => (prev.bitrate > current.bitrate ? prev : current));
+            url = highestBitrateVariant.url;
+        } else if (imageSize && mediaURL) {
+            url = mediaURL;
+        }
+
+        if (url) {
+            const filename = path.basename(new URL(url).pathname);
+            await downloadMedia(url, filename, createdAtTimestamp, userFolder);
+        }
+    }
+};
+
+// Function to process paginated data
+const processData = async (data, user) => {
+    if (Array.isArray(data.data)) {
+        for (const item of data.data) {
+            const userFolder = item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() != user.toLowerCase()
+                ? path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase())
+                : user.toLowerCase();
+
+            await processMediaEntities(item.mediaEntities, item.createdAt, userFolder);
+
+            if (Array.isArray(item.conversation)) {
+                for (const convoItem of item.conversation) {
+                    const convoUserFolder = convoItem.user && convoItem.user.screenName.toLowerCase() == user.toLowerCase()
+                        ? user.toLowerCase()
+                        : path.join('_extra', convoItem.user.screenName.toLowerCase());
+
+                    await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder);
+                }
+            }
+        }
+    }
+};
 
 // Main function to fetch paginated data
-async function fetchPaginatedData() {
+const fetchPaginatedData = async () => {
     const args = process.argv.slice(2);
-    let user = null;
-    let startingCursor = null;
-
-    // Parse arguments
     args.forEach(arg => {
         if (arg.startsWith('--user:') || arg.startsWith('--u:')) {
             user = arg.split(':')[1];
         } else if (arg.startsWith('--cursor:') || arg.startsWith('--c:')) {
             startingCursor = arg.split(':')[1];
+        } else if (arg.startsWith('--noextra') || arg.startsWith('--ne')) {
+            noExtra = true;
         }
     });
 
-    if (!user) return console.error('A user must be provided, try: npm run start -- --user:<username>\nOptionally, add --cursor:<cursor> if you want to start directly at a specific cursor.');
+	if (!user) {
+        return console.error('A user must be provided, try: npm run start -- --user:<username>\nOptionally, you can use:\n --cursor:<cursor> - start directly at a specific cursor.\n --noextra - exclude downloading media from reposts and conversations.');
+    }
 
     let nextPageUrl = `https://api.sotwe.com/v3/user/${user}/`;
     if (startingCursor) nextPageUrl += `?after=${startingCursor}`;
@@ -68,60 +139,35 @@ async function fetchPaginatedData() {
         "priority": "u=1, i"
     };
 
-    if (fs.existsSync(path.join(__extra, user.toLowerCase()))) {
-        fs.renameSync(path.join(__extra, user.toLowerCase()), path.join(__media, user.toLowerCase()));
-        console.log(`Moved ${user} directory from _conversations to main media folder.`);
+    const userDirPath = path.join(__extra, user.toLowerCase());
+    if (fs.existsSync(userDirPath)) {
+        fs.renameSync(userDirPath, path.join(__media, user.toLowerCase()));
+        console.log(`Moved ${user} directory from _extra to main media folder.`);
     }
 
     while (nextPageUrl) {
-        console.log(nextPageUrl);
         try {
-            const response = await fetch(nextPageUrl, {
-                method: "GET",
-                headers: headers,
-                referrer: "https://www.sotwe.com/",
-                referrerPolicy: "strict-origin-when-cross-origin",
-                mode: "cors",
-                credentials: "include",
-            });
+            console.log(nextPageUrl);
+            const response = await fetch(nextPageUrl, { method: "GET", headers, mode: "cors", credentials: "include" });
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            // Process main data
             const data = await response.json();
-            if (data.data && Array.isArray(data.data)) {
-                for (let item of data.data) {
-                    if (item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() != user.toLowerCase()) {
-                        await processMediaEntities(item.mediaEntities, item.createdAt, path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase()));
-                    } else {
-                        await processMediaEntities(item.mediaEntities, item.createdAt, user.toLowerCase());
-                    }
-
-                    if (item.conversation && Array.isArray(item.conversation)) {
-                        for (let convoItem of item.conversation) {
-                            if (convoItem.user && convoItem.user.screenName) {
-                                const convoUserFolder = convoItem.user.screenName.toLowerCase() == user.toLowerCase() ? user.toLowerCase() : path.join('_extra', convoItem.user.screenName.toLowerCase());
-                                await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder);
-                            }
-                        }
-                    }
-                }
-            }
+            await processData(data, user);
 
             const nextCursor = data.after;
             if (nextCursor) {
                 nextPageUrl = `https://api.sotwe.com/v3/user/${user}/?after=${nextCursor}`;
-                console.log(`Next cursor found.`, nextCursor);
+                console.log(`Next cursor found: ${nextCursor}`);
             } else {
                 nextPageUrl = null;
-                console.log("Next cursor wasn't found, exisitng.");
+                console.log("No more pages to fetch, exiting.");
                 process.exit(0);
             }
 
-            // Introduce a random delay between requests
-            const delay = getRandomDelay(3000, 7000); // 3 to 7 seconds
+            const delay = getRandomDelay(3000, 7000);
             console.log(`Waiting for ${delay} milliseconds before next request...`);
             await sleep(delay);
         } catch (error) {
@@ -129,30 +175,7 @@ async function fetchPaginatedData() {
             nextPageUrl = null;
         }
     }
-}
-
-// Function to process media entities
-async function processMediaEntities(mediaEntities, createdAtTimestamp, userFolder) {
-    if (mediaEntities && Array.isArray(mediaEntities)) {
-        for (let media of mediaEntities) {
-            if (media.videoInfo && media.videoInfo.variants && Array.isArray(media.videoInfo.variants)) {
-                // Find highest bitrate video variant
-                let highestBitrateVariant = media.videoInfo.variants.reduce((prev, current) => {
-                    return (prev.bitrate > current.bitrate) ? prev : current;
-                });
-
-                if (highestBitrateVariant.url) {
-                    const filename = path.basename(new URL(highestBitrateVariant.url).pathname);
-                    await downloadMedia(highestBitrateVariant.url, filename, createdAtTimestamp, userFolder);
-                }
-            } else if (media.imageSize && media.mediaURL) {
-                // Download image
-                const filename = path.basename(new URL(media.mediaURL).pathname);
-                await downloadMedia(media.mediaURL, filename, createdAtTimestamp, userFolder);
-            }
-        }
-    }
-}
+};
 
 // Start fetching data
 fetchPaginatedData();
