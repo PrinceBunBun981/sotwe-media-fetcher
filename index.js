@@ -11,6 +11,7 @@ const __extra = path.join(__media, "_extra");
 let user = null;
 let startingCursor = null;
 let noExtra = false;
+let continueOnDuplicate = false;
 
 // Utility functions
 const createDirectoryIfNotExists = (directory) => {
@@ -21,6 +22,21 @@ const createDirectoryIfNotExists = (directory) => {
 
 const fileExistsInDirectory = (directory, filename) => {
     return fs.readdirSync(directory).some(file => file.includes(filename));
+};
+
+const getLastDateInDirectory = (directory) => {
+    const files = fs.readdirSync(directory);
+    const dateStrings = files
+        .map(file => {
+            const [datePart] = file.split('_');
+            return datePart;
+        })
+        .filter(datePart => !isNaN(new Date(datePart).getTime()));
+
+    const uniqueDates = Array.from(new Set(dateStrings)).sort((a, b) => new Date(b) - new Date(a));
+    if (uniqueDates.length < 2) return null;
+
+    return uniqueDates[0];
 };
 
 const saveBufferToFile = (filePath, buffer) => {
@@ -40,13 +56,31 @@ const getRandomDelay = (min, max) => {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
+const shouldExitForDuplicate = (createdAtTimestamp, userFolder, pinned) => {
+    if (userFolder.toLowerCase() === user.toLowerCase() && !pinned && !continueOnDuplicate) {
+        const lastDate = getLastDateInDirectory(path.join(__media, userFolder));
+        if (lastDate) {
+            const lastDateObj = new Date(lastDate);
+            const createdAtDateObj = new Date(createdAtTimestamp);
+
+            if (createdAtDateObj < lastDateObj) {
+                console.log(`Files already exist for day before ${lastDate}. Exiting process.`);
+                process.exit(0);
+            }
+        }
+    }
+}
+
 // Function to download media
-const downloadMedia = async (url, filename, createdAtTimestamp, userFolder) => {
+const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinned) => {
     try {
+        shouldExitForDuplicate(createdAtTimestamp, userFolder, pinned);
+
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`Failed to fetch media: ${response.statusText}`);
         }
+
         const buffer = Buffer.from(await response.arrayBuffer());
         const dateString = getFormattedDate(createdAtTimestamp);
         const finalFilename = `${dateString}_${filename}`;
@@ -69,7 +103,7 @@ const downloadMedia = async (url, filename, createdAtTimestamp, userFolder) => {
 };
 
 // Function to process individual media entities
-const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolder) => {
+const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolder, pinned) => {
     if (!Array.isArray(mediaEntities)) return;
 
     for (const media of mediaEntities) {
@@ -85,7 +119,7 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
 
         if (url) {
             const filename = path.basename(new URL(url).pathname);
-            await downloadMedia(url, filename, createdAtTimestamp, userFolder);
+            await downloadMedia(url, filename, createdAtTimestamp, userFolder, pinned);
         }
     }
 };
@@ -98,7 +132,7 @@ const processData = async (data, user) => {
                 ? path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase())
                 : user.toLowerCase();
 
-            await processMediaEntities(item.mediaEntities, item.createdAt, userFolder);
+            await processMediaEntities(item.mediaEntities, item.createdAt, userFolder, item.pinned);
 
             if (Array.isArray(item.conversation)) {
                 for (const convoItem of item.conversation) {
@@ -106,7 +140,7 @@ const processData = async (data, user) => {
                         ? user.toLowerCase()
                         : path.join('_extra', convoItem.user.screenName.toLowerCase());
 
-                    await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder);
+                    await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder, item.pinned);
                 }
             }
         }
@@ -123,6 +157,8 @@ const fetchPaginatedData = async () => {
             startingCursor = arg.split(':')[1];
         } else if (arg.startsWith('--noextra') || arg.startsWith('--ne')) {
             noExtra = true;
+        } else if (arg.startsWith('--dupe') || arg.startsWith('--d')) {
+            continueOnDuplicate = true;
         }
     });
 
