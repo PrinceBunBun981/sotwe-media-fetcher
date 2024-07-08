@@ -15,12 +15,6 @@ let continueOnDuplicate = false;
 let lastDay = null;
 
 // Utility functions
-const createDirectoryIfNotExists = (directory) => {
-    if (!fs.existsSync(directory)) {
-        fs.mkdirSync(directory, { recursive: true });
-    }
-};
-
 const fileExistsInDirectory = (directory, filename) => {
     return fs.readdirSync(directory).some(file => file.includes(filename));
 };
@@ -91,7 +85,11 @@ const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinn
 			return console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
 		}
 
-        createDirectoryIfNotExists(userDirectory);
+        if (!fs.existsSync(userDirectory)) {
+            if (userFolder.toLowerCase().includes(user.toLowerCase())) lastDay = "2006-3-21";
+            fs.mkdirSync(userDirectory, { recursive: true });
+        }
+
         if (!fileExistsInDirectory(userDirectory, filename)) {
             saveBufferToFile(path.join(userDirectory, finalFilename), buffer);
             console.log(`Downloaded media for ${userFolder}: ${finalFilename}`);
