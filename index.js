@@ -12,6 +12,7 @@ let user = null;
 let startingCursor = null;
 let noExtra = false;
 let continueOnDuplicate = false;
+let lastDay = null;
 
 // Utility functions
 const createDirectoryIfNotExists = (directory) => {
@@ -58,13 +59,13 @@ const getRandomDelay = (min, max) => {
 
 const shouldExitForDuplicate = (createdAtTimestamp, userFolder, pinned) => {
     if (userFolder.toLowerCase() === user.toLowerCase() && !pinned && !continueOnDuplicate) {
-        const lastDate = getLastDateInDirectory(path.join(__media, userFolder));
-        if (lastDate) {
-            const lastDateObj = new Date(lastDate);
+        if (!lastDay) lastDay = getLastDateInDirectory(path.join(__media, userFolder));
+        if (lastDay) {
+            const lastDateObj = new Date(lastDay);
             const createdAtDateObj = new Date(createdAtTimestamp);
 
             if (createdAtDateObj < lastDateObj) {
-                console.log(`Files already exist for day before ${lastDate}. Exiting process.`);
+                console.log(`Files already exist for day before ${lastDay}. Exiting process.`);
                 process.exit(0);
             }
         }
