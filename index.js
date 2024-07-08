@@ -16,10 +16,13 @@ let lastDay = null;
 
 // Utility functions
 const fileExistsInDirectory = (directory, filename) => {
+    if (!fs.existsSync(directory)) return null;
     return fs.readdirSync(directory).some(file => file.includes(filename));
 };
 
 const getLastDateInDirectory = (directory) => {
+    if (!fs.existsSync(directory)) return null;
+
     const files = fs.readdirSync(directory);
     const dateStrings = files
         .map(file => {
