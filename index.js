@@ -17,80 +17,54 @@ let update = false;
 let duplicateDetected = false;
 
 // Utility functions
-const fileExistsInDirectory = (directory, filename) => {
-    if (!fs.existsSync(directory)) return null;
-    return fs.readdirSync(directory).some(file => file.includes(filename));
-};
+const fileExistsInDirectory = (directory, filename) => fs.existsSync(directory) && fs.readdirSync(directory).some(file => file.includes(filename));
 
 const getLastDateInDirectory = (directory) => {
     if (!fs.existsSync(directory)) return null;
-
-    const files = fs.readdirSync(directory);
-    const dateStrings = files
-        .map(file => {
-            const [datePart] = file.split('_');
-            return datePart;
-        })
-        .filter(datePart => !isNaN(new Date(datePart).getTime()));
-
-    const uniqueDates = Array.from(new Set(dateStrings)).sort((a, b) => new Date(b) - new Date(a));
-    if (uniqueDates.length < 2) return null;
-
-    return uniqueDates[0];
+    const dates = [...new Set(
+        fs.readdirSync(directory)
+            .map(file => file.split('_')[0])
+            .filter(datePart => !isNaN(new Date(datePart).getTime()))
+    )];
+    return dates.sort((a, b) => new Date(b) - new Date(a))[0] || null;
 };
 
-const saveBufferToFile = (filePath, buffer) => {
-    fs.writeFileSync(filePath, buffer);
-};
+const saveBufferToFile = (filePath, buffer) => fs.writeFileSync(filePath, buffer);
 
-const getFormattedDate = (timestamp) => {
-    const date = new Date(timestamp);
-    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-};
+const getFormattedDate = (timestamp) => new Date(timestamp).toISOString().split('T')[0];
 
 const sleep = (ms) => {
+    console.log(`Waiting ${ms} milliseconds before next request...`)
     return new Promise(resolve => setTimeout(resolve, ms));
-};
+}
 
-const getRandomDelay = (min, max) => {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-};
+const getRandomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 const shouldExitForDuplicate = (createdAtTimestamp, userFolder, pinned) => {
-    if (duplicateDetected) return;
-    if (userFolder.toLowerCase() === user.toLowerCase() && !pinned && !continueOnDuplicate) {
-        if (!lastDay) lastDay = getLastDateInDirectory(path.join(__media, userFolder));
-        if (lastDay) {
-            const lastDateObj = new Date(lastDay);
-            const createdAtDateObj = new Date(createdAtTimestamp);
-
-            if (createdAtDateObj < lastDateObj) {
-                console.log(`Files already exist for day before ${lastDay}. Exiting process.`);
-                duplicateDetected = true;
-            }
-        }
+    if (duplicateDetected || pinned || continueOnDuplicate || userFolder.toLowerCase() !== user.toLowerCase()) return;
+    if (!lastDay) lastDay = getLastDateInDirectory(path.join(__media, userFolder));
+    if (lastDay && new Date(createdAtTimestamp) < new Date(lastDay)) {
+        console.log(`Files already exist for day before ${lastDay}. Exiting process.`);
+        duplicateDetected = true;
     }
 };
 
 // Function to download media
 const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinned) => {
+    shouldExitForDuplicate(createdAtTimestamp, userFolder, pinned);
+    if (duplicateDetected) return;
+
     try {
-        shouldExitForDuplicate(createdAtTimestamp, userFolder, pinned);
-
-        if (duplicateDetected) return;
-
         const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch media: ${response.statusText}`);
-        }
-
+        if (!response.ok) throw new Error(`Failed to fetch media: ${response.statusText}`);
+        
         const buffer = Buffer.from(await response.arrayBuffer());
-        const dateString = getFormattedDate(createdAtTimestamp);
-        const finalFilename = `${dateString}_${filename}`;
+        const finalFilename = `${getFormattedDate(createdAtTimestamp)}_${filename}`;
         const userDirectory = path.join(__media, userFolder);
 
         if (noExtra && !userFolder.toLowerCase().includes(user.toLowerCase())) {
-            return console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
+            console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
+            return;
         }
 
         if (!fs.existsSync(userDirectory)) {
@@ -114,13 +88,12 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
     if (!Array.isArray(mediaEntities)) return;
 
     for (const media of mediaEntities) {
-        const { videoInfo, mediaURL, imageSize } = media;
-        let url;
+        const { videoInfo, mediaURL } = media;
+        let url = null;
 
-        if (videoInfo && Array.isArray(videoInfo.variants)) {
-            const highestBitrateVariant = videoInfo.variants.reduce((prev, current) => (prev.bitrate > current.bitrate ? prev : current));
-            url = highestBitrateVariant.url;
-        } else if (imageSize && mediaURL) {
+        if (videoInfo?.variants) {
+            url = videoInfo.variants.reduce((prev, curr) => (prev.bitrate > curr.bitrate ? prev : curr)).url;
+        } else if (mediaURL) {
             url = mediaURL;
         }
 
@@ -132,24 +105,22 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
 };
 
 // Function to process paginated data
-const processData = async (data, user) => {
-    if (Array.isArray(data.data)) {
-        for (const item of data.data) {
-            const userFolder = item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() != user.toLowerCase()
-                ? path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase())
-                : user.toLowerCase();
+const processData = async (data, username) => {
+    if (!Array.isArray(data.data)) return;
 
-            await processMediaEntities(item.mediaEntities, item.createdAt, userFolder, item.pinned);
+    for (const item of data.data) {
+        const userFolder = item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() !== username.toLowerCase()
+            ? path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase())
+            : username.toLowerCase();
 
-            if (Array.isArray(item.conversation)) {
-                for (const convoItem of item.conversation) {
-                    const convoUserFolder = convoItem.user && convoItem.user.screenName.toLowerCase() == user.toLowerCase()
-                        ? user.toLowerCase()
-                        : path.join('_extra', convoItem.user.screenName.toLowerCase());
+        await processMediaEntities(item.mediaEntities, item.createdAt, userFolder, item.pinned);
 
-                    await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder, item.pinned);
-                }
-            }
+        for (const convoItem of item.conversation || []) {
+            const convoUserFolder = convoItem.user?.screenName.toLowerCase() === username.toLowerCase()
+                ? username.toLowerCase()
+                : path.join('_extra', convoItem.user.screenName.toLowerCase());
+
+            await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder, item.pinned);
         }
     }
 };
@@ -178,9 +149,7 @@ const fetchPaginatedData = async (username) => {
             console.log(nextPageUrl);
             const response = await fetch(nextPageUrl, { method: "GET", headers, mode: "cors", credentials: "include" });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const data = await response.json();
             await processData(data, username);
@@ -188,17 +157,10 @@ const fetchPaginatedData = async (username) => {
             if (duplicateDetected) break;
 
             const nextCursor = data.after;
-            if (nextCursor) {
-                nextPageUrl = `https://api.sotwe.com/v3/user/${username}/?after=${nextCursor}`;
-                console.log(`Next cursor found: ${nextCursor}`);
-            } else {
-                nextPageUrl = null;
-                console.log("No more pages to fetch for this user.");
-            }
+            nextPageUrl = nextCursor ? `https://api.sotwe.com/v3/user/${username}/?after=${nextCursor}` : null;
+            if (nextCursor) console.log(`Next cursor found: ${nextCursor}`);
 
-            const delay = getRandomDelay(3000, 7000);
-            console.log(`Waiting for ${delay} milliseconds before next request...`);
-            await sleep(delay);
+            await sleep(getRandomDelay(3000, 7000));
         } catch (error) {
             console.error('Error fetching data:', error);
             nextPageUrl = null;
@@ -217,24 +179,37 @@ const processUpdateFlag = async () => {
         lastDay = null;
         console.log(`Processing user: ${dir}`);
         await fetchPaginatedData(dir);
-        if (duplicateDetected) continue;
+        await sleep(getRandomDelay(3000, 7000));
     }
 
-    console.log(`Downloaded latest media for ${directories.join(', ')}.`)
+    console.log(`Downloaded latest media for ${directories.join(', ')}.`);
 };
 
+// Parse command line arguments
 const args = process.argv.slice(2);
 args.forEach(arg => {
-    if (arg.startsWith('--user:') || arg.startsWith('--u:')) {
-        user = arg.split(':')[1];
-    } else if (arg.startsWith('--cursor:') || arg.startsWith('--c:')) {
-        startingCursor = arg.split(':')[1];
-    } else if (arg.startsWith('--noextra') || arg.startsWith('--ne')) {
-        noExtra = true;
-    } else if (arg.startsWith('--dupe') || arg.startsWith('--d')) {
-        continueOnDuplicate = true;
-    } else if (arg.startsWith('--update') || arg.startsWith('--upd')) {
-        update = true;
+    const [key, value] = arg.split(':');
+    switch (key) {
+        case '--user':
+        case '--u':
+            user = value;
+            break;
+        case '--cursor':
+        case '--c':
+            startingCursor = value;
+            break;
+        case '--noextra':
+        case '--ne':
+            noExtra = true;
+            break;
+        case '--dupe':
+        case '--d':
+            continueOnDuplicate = true;
+            break;
+        case '--update':
+        case '--upd':
+            update = true;
+            break;
     }
 });
 
