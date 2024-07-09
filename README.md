@@ -11,7 +11,7 @@ Before running the script make sure you have Node.js installed. You can download
 ## Usage
 To run the script, use the following format:
 ```
-npm run start -- --user:<username> [--cursor:<cursor>] [--noextra] [--dupe]
+npm run start -- --user:<username> [--cursor:<cursor>] [--noextra] [--dupe] [--update]
 ```
 
 ### Arguments
@@ -20,6 +20,7 @@ npm run start -- --user:<username> [--cursor:<cursor>] [--noextra] [--dupe]
 - `--noextra`: **Optional.** Prevents downloading media from retweets and conversations.
 - `--dupe`: **Optional.** Prevents the download from stopping when it encounters media you already have saved. 
   > Note: This is only accounted for regular posts, when encountering retweets it will continue to download until reaching a regular post from `user` with the day before the last saved date (to account for new media on the same day). If you used the `--noextra` flag initally, then decide you want to download all extra media, use the `--dupe` flag.
+- `--update`: **Optional.** Iterates through all users who have had their media downloaded and pulls the latest media for each. This is only done for users in the `media` folder, not in `_extra`.
 
 ## Notes
 - The script will download images and videos associated with the user's account.

@@ -13,6 +13,8 @@ let startingCursor = null;
 let noExtra = false;
 let continueOnDuplicate = false;
 let lastDay = null;
+let update = false;
+let duplicateDetected = false;
 
 // Utility functions
 const fileExistsInDirectory = (directory, filename) => {
@@ -55,6 +57,7 @@ const getRandomDelay = (min, max) => {
 };
 
 const shouldExitForDuplicate = (createdAtTimestamp, userFolder, pinned) => {
+    if (duplicateDetected) return;
     if (userFolder.toLowerCase() === user.toLowerCase() && !pinned && !continueOnDuplicate) {
         if (!lastDay) lastDay = getLastDateInDirectory(path.join(__media, userFolder));
         if (lastDay) {
@@ -63,16 +66,18 @@ const shouldExitForDuplicate = (createdAtTimestamp, userFolder, pinned) => {
 
             if (createdAtDateObj < lastDateObj) {
                 console.log(`Files already exist for day before ${lastDay}. Exiting process.`);
-                process.exit(0);
+                duplicateDetected = true;
             }
         }
     }
-}
+};
 
 // Function to download media
 const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinned) => {
     try {
         shouldExitForDuplicate(createdAtTimestamp, userFolder, pinned);
+
+        if (duplicateDetected) return;
 
         const response = await fetch(url);
         if (!response.ok) {
@@ -84,9 +89,9 @@ const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinn
         const finalFilename = `${dateString}_${filename}`;
         const userDirectory = path.join(__media, userFolder);
 
-		if (noExtra && !userFolder.toLowerCase().includes(user.toLowerCase())) {
-			return console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
-		}
+        if (noExtra && !userFolder.toLowerCase().includes(user.toLowerCase())) {
+            return console.log(`Skipped extra download for ${userFolder}: ${finalFilename}`);
+        }
 
         if (!fs.existsSync(userDirectory)) {
             if (userFolder.toLowerCase().includes(user.toLowerCase())) lastDay = "2006-3-21";
@@ -150,25 +155,10 @@ const processData = async (data, user) => {
 };
 
 // Main function to fetch paginated data
-const fetchPaginatedData = async () => {
-    const args = process.argv.slice(2);
-    args.forEach(arg => {
-        if (arg.startsWith('--user:') || arg.startsWith('--u:')) {
-            user = arg.split(':')[1];
-        } else if (arg.startsWith('--cursor:') || arg.startsWith('--c:')) {
-            startingCursor = arg.split(':')[1];
-        } else if (arg.startsWith('--noextra') || arg.startsWith('--ne')) {
-            noExtra = true;
-        } else if (arg.startsWith('--dupe') || arg.startsWith('--d')) {
-            continueOnDuplicate = true;
-        }
-    });
+const fetchPaginatedData = async (username) => {
+    duplicateDetected = false;
 
-	if (!user) {
-        return console.error('A user must be provided, try: npm run start -- --user:<username>\nOptionally, you can use:\n --cursor:<cursor> - start directly at a specific cursor.\n --noextra - exclude downloading media from reposts and conversations.');
-    }
-
-    let nextPageUrl = `https://api.sotwe.com/v3/user/${user}/`;
+    let nextPageUrl = `https://api.sotwe.com/v3/user/${username}/`;
     if (startingCursor) nextPageUrl += `?after=${startingCursor}`;
 
     const headers = {
@@ -177,13 +167,13 @@ const fetchPaginatedData = async () => {
         "priority": "u=1, i"
     };
 
-    const userDirPath = path.join(__extra, user.toLowerCase());
+    const userDirPath = path.join(__extra, username.toLowerCase());
     if (fs.existsSync(userDirPath)) {
-        fs.renameSync(userDirPath, path.join(__media, user.toLowerCase()));
-        console.log(`Moved ${user} directory from _extra to main media folder.`);
+        fs.renameSync(userDirPath, path.join(__media, username.toLowerCase()));
+        console.log(`Moved ${username} directory from _extra to main media folder.`);
     }
 
-    while (nextPageUrl) {
+    while (nextPageUrl && !duplicateDetected) {
         try {
             console.log(nextPageUrl);
             const response = await fetch(nextPageUrl, { method: "GET", headers, mode: "cors", credentials: "include" });
@@ -193,16 +183,17 @@ const fetchPaginatedData = async () => {
             }
 
             const data = await response.json();
-            await processData(data, user);
+            await processData(data, username);
+
+            if (duplicateDetected) break;
 
             const nextCursor = data.after;
             if (nextCursor) {
-                nextPageUrl = `https://api.sotwe.com/v3/user/${user}/?after=${nextCursor}`;
+                nextPageUrl = `https://api.sotwe.com/v3/user/${username}/?after=${nextCursor}`;
                 console.log(`Next cursor found: ${nextCursor}`);
             } else {
                 nextPageUrl = null;
-                console.log("No more pages to fetch, exiting.");
-                process.exit(0);
+                console.log("No more pages to fetch for this user.");
             }
 
             const delay = getRandomDelay(3000, 7000);
@@ -215,5 +206,45 @@ const fetchPaginatedData = async () => {
     }
 };
 
-// Start fetching data
-fetchPaginatedData();
+// Function to process update flag
+const processUpdateFlag = async () => {
+    const directories = fs.readdirSync(__media, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory() && dirent.name !== "_extra")
+        .map(dirent => dirent.name);
+
+    for (const dir of directories) {
+        user = dir;
+        lastDay = null;
+        console.log(`Processing user: ${dir}`);
+        await fetchPaginatedData(dir);
+        if (duplicateDetected) continue;
+    }
+
+    console.log(`Downloaded latest media for ${directories.join(', ')}.`)
+};
+
+const args = process.argv.slice(2);
+args.forEach(arg => {
+    if (arg.startsWith('--user:') || arg.startsWith('--u:')) {
+        user = arg.split(':')[1];
+    } else if (arg.startsWith('--cursor:') || arg.startsWith('--c:')) {
+        startingCursor = arg.split(':')[1];
+    } else if (arg.startsWith('--noextra') || arg.startsWith('--ne')) {
+        noExtra = true;
+    } else if (arg.startsWith('--dupe') || arg.startsWith('--d')) {
+        continueOnDuplicate = true;
+    } else if (arg.startsWith('--update') || arg.startsWith('--upd')) {
+        update = true;
+    }
+});
+
+if (update) {
+    await processUpdateFlag();
+} else {
+    if (!user) {
+        console.error('A user must be provided, try: npm run start -- --user:<username>\nOptionally, you can use:\n --cursor:<cursor> - start directly at a specific cursor.\n --noextra - exclude downloading media from reposts and conversations.\n --dupe - continue downloading media even if a duplicate post is skipped.\n --update - iterates through all users who have been downloaded and pull the latest media.');
+        process.exit(1);
+    }
+
+    await fetchPaginatedData(user);
+}
