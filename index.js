@@ -19,6 +19,8 @@ let duplicateDetected = false;
 // Utility functions
 const fileExistsInDirectory = (directory, filename) => fs.existsSync(directory) && fs.readdirSync(directory).some(file => file.includes(filename));
 
+const filesAreInDirectory = (directory) => fs.readdirSync(directory).length > 0;
+
 const getLastDateInDirectory = (directory) => {
     if (!fs.existsSync(directory)) return null;
     const dates = [...new Set(
@@ -67,7 +69,7 @@ const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinn
             return;
         }
 
-        if (!fs.existsSync(userDirectory)) {
+        if (!fs.existsSync(userDirectory) || !filesAreInDirectory(userDirectory)) {
             if (userFolder.toLowerCase().includes(user.toLowerCase())) lastDay = "2006-3-21";
             fs.mkdirSync(userDirectory, { recursive: true });
         }
@@ -158,9 +160,12 @@ const fetchPaginatedData = async (username) => {
 
             const nextCursor = data.after;
             nextPageUrl = nextCursor ? `https://api.sotwe.com/v3/user/${username}/?after=${nextCursor}` : null;
-            if (nextCursor) console.log(`Next cursor found: ${nextCursor}`);
-
-            await sleep(getRandomDelay(3000, 7000));
+            if (nextCursor) {
+                console.log(`Next cursor found: ${nextCursor}`);
+                await sleep(getRandomDelay(3000, 7000));
+            } else {
+                console.log(`No more media to fetch for ${username}.`);
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
             nextPageUrl = null;
