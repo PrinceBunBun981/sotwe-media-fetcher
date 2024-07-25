@@ -1,9 +1,6 @@
 # Sotwe Media Fetcher
 This script is designed to fetch media data from Sotwe's API endpoint. It downloads images and videos associated with a user's Twitter (X) account.
 
-> [!IMPORTANT]  
-> Sotwe gated their API behind Cloudflare captchas, requiring cookies to get through. As this was a proof of concept, I won't be updating this anymore to get around this. PRs are welcome if anyone wants to make changes to this.
-
 ## Prerequisites
 Before running the script make sure you have Node.js installed. You can download it [here](https://nodejs.org/)
 

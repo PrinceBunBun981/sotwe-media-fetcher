@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteer.use(StealthPlugin());
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -131,14 +134,11 @@ const processData = async (data, username) => {
 const fetchPaginatedData = async (username) => {
     duplicateDetected = false;
 
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+
     let nextPageUrl = `https://api.sotwe.com/v3/user/${username}/`;
     if (startingCursor) nextPageUrl += `?after=${startingCursor}`;
-
-    const headers = {
-        "accept": "application/json, text/plain, */*",
-        "accept-language": "en-US,en;q=0.8",
-        "priority": "u=1, i"
-    };
 
     const userDirPath = path.join(__extra, username.toLowerCase());
     if (fs.existsSync(userDirPath)) {
@@ -149,11 +149,15 @@ const fetchPaginatedData = async (username) => {
     while (nextPageUrl && !duplicateDetected) {
         try {
             console.log(nextPageUrl);
-            const response = await fetch(nextPageUrl, { method: "GET", headers, mode: "cors", credentials: "include" });
+            await page.goto(nextPageUrl, { waitUntil: 'networkidle2' });
 
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await page.evaluate(() => {
+                const responseElement = document.querySelector('pre');
+                return responseElement ? JSON.parse(responseElement.textContent) : null;
+            });
 
-            const data = await response.json();
+            if (!data) throw new Error('No data found on page.');
+
             await processData(data, username);
 
             if (duplicateDetected) break;
@@ -171,6 +175,8 @@ const fetchPaginatedData = async (username) => {
             nextPageUrl = null;
         }
     }
+
+    await browser.close();
 };
 
 // Function to process update flag
