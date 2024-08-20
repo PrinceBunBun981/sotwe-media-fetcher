@@ -93,6 +93,8 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
     if (!Array.isArray(mediaEntities)) return;
 
     for (const media of mediaEntities) {
+        if (duplicateDetected) continue;
+
         const { videoInfo, mediaURL, expandedURL } = media;
         let url = null;
 
@@ -104,7 +106,7 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
 
         if (url) {
             const filename = path.basename(new URL(url).pathname);
-            if (noExtra && !expandedURL.toLowerCase().includes(user.toLowerCase())) {
+            if (noExtra && !expandedURL?.toLowerCase().includes(user.toLowerCase())) {
                 console.info(`Skipped extra download for ${userFolder}: ${filename}`);
                 continue;
             }
