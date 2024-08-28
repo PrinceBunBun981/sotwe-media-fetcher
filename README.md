@@ -11,7 +11,7 @@ Before running the script make sure you have Node.js installed. You can download
 ## Usage
 To run the script, use the following format:
 ```
-npm run start -- --user:<username> [--cursor:<cursor>] [--noextra] [--dupe] [--update]
+npm start -- --user:<username> [--cursor:<cursor> | --c:<cursor>] [--noextra | --ne] [--subtweets | --s] [--dupe | --d] [--update]
 ```
 
 ### Arguments

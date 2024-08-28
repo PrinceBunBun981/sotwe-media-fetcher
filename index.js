@@ -88,7 +88,7 @@ const downloadMedia = async (url, filename, createdAtTimestamp, userFolder, pinn
     try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Failed to fetch media: ${response.statusText}`);
-        
+
         const buffer = Buffer.from(await response.arrayBuffer());
         const finalFilename = `${getFormattedDate(createdAtTimestamp)}_${filename}`;
         const userDirectory = path.join(__media, userFolder);
@@ -132,10 +132,12 @@ const processMediaEntities = async (mediaEntities, createdAtTimestamp, userFolde
 
         if (url) {
             const filename = path.basename(new URL(url).pathname);
-            if (noExtra && !expandedURL?.toLowerCase().includes(user.toLowerCase())) {
-                console.info(`Skipped extra download for ${userFolder}: ${filename}`);
-                continue;
+            const expandedURLUser = new URL(expandedURL).pathname.split("/")[1].toLowerCase();
+
+            if (!userFolder.toLowerCase().includes(expandedURLUser)) {
+                userFolder = path.join("_extra", expandedURLUser);
             }
+
             await downloadMedia(url, filename, createdAtTimestamp, userFolder, pinned);
         }
     }
@@ -146,18 +148,10 @@ const processData = async (data, username) => {
     if (!Array.isArray(data.data)) return;
 
     for (const item of data.data) {
-        const userFolder = item.retweetedStatus && item.retweetedStatus.user.screenName.toLowerCase() !== username.toLowerCase()
-            ? path.join('_extra', item.retweetedStatus.user.screenName.toLowerCase())
-            : username.toLowerCase();
-
-        await processMediaEntities(item.mediaEntities, item.createdAt, userFolder, item.pinned);
+        await processMediaEntities(item.mediaEntities, item.createdAt, username.toLowerCase(), item.pinned);
 
         for (const convoItem of item.conversation || []) {
-            const convoUserFolder = convoItem.user?.screenName.toLowerCase() === username.toLowerCase()
-                ? username.toLowerCase()
-                : path.join('_extra', convoItem.user.screenName.toLowerCase());
-
-            await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, convoUserFolder, item.pinned);
+            await processMediaEntities(convoItem.mediaEntities, convoItem.createdAt, username.toLowerCase(), item.pinned);
         }
     }
 };
