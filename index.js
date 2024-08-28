@@ -24,6 +24,32 @@ const fileExistsInDirectory = (directory, filename) => fs.existsSync(directory) 
 
 const filesAreInDirectory = (directory) => fs.readdirSync(directory).length > 0;
 
+const moveFilesAndRemoveDir = (srcDir, destDir) => {
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    const items = fs.readdirSync(srcDir);
+
+    items.forEach(item => {
+        const srcPath = path.join(srcDir, item);
+        const destPath = path.join(destDir, item);
+
+        if (fs.statSync(srcPath).isDirectory()) {
+            moveFilesAndRemoveDir(srcPath, destPath);
+        } else {
+            if (fs.readdirSync(destDir).some(file => file.includes(item.split('_')[1]))) {
+                console.log(`Deleting duplicate file instead of moving: ${item.split('_')[1]}`);
+                fs.rmSync(srcPath);
+            } else {
+                fs.renameSync(srcPath, destPath);
+            }
+        }
+    });
+
+    fs.rmdirSync(srcDir);
+};
+
 const getLastDateInDirectory = (directory) => {
     if (!fs.existsSync(directory)) return null;
     const dates = [...new Set(
@@ -148,7 +174,7 @@ const fetchPaginatedData = async (username) => {
 
     const userDirPath = path.join(__extra, username.toLowerCase());
     if (fs.existsSync(userDirPath)) {
-        fs.renameSync(userDirPath, path.join(__media, username.toLowerCase()));
+        moveFilesAndRemoveDir(userDirPath, path.join(__media, username.toLowerCase()));
         console.log(`Moved ${username} directory from _extra to main media folder.`);
     }
 
