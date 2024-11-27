@@ -3,8 +3,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import userAgent from 'user-agents';
 
 puppeteer.use(StealthPlugin());
+
+const browser = await puppeteer.launch({ headless: true });
+const page = await browser.newPage();
+await page.setUserAgent(userAgent.random().toString())
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -159,9 +164,6 @@ const processData = async (data, username) => {
 // Main function to fetch paginated data
 const fetchPaginatedData = async (username) => {
     duplicateDetected = false;
-
-    const browser = await puppeteer.launch({ headless: true });
-    const page = await browser.newPage();
 
     let nextPageUrl = `https://api.sotwe.com/v3/user/${username}/`;
     if (startingCursor) nextPageUrl += `?after=${startingCursor}`;
