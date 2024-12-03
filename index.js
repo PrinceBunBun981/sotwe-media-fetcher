@@ -204,7 +204,9 @@ const fetchPaginatedData = async (username) => {
         }
     }
 
-    await browser.close();
+    if (!update) {
+        await browser.close();
+    }
 };
 
 // Function to process update flag
@@ -220,6 +222,8 @@ const processUpdateFlag = async () => {
         await fetchPaginatedData(dir);
         await sleep(getRandomDelay(3000, 7000));
     }
+
+    await browser.close();
 
     console.log(`Downloaded latest media for ${directories.join(', ')}.`);
 };
